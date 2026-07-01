@@ -1,0 +1,53 @@
+trigger:
+  - main
+
+pool:
+  name: Default
+
+variables:
+  # Your modern JFrog Platform Service Connection
+  - name: JFROG_CONNECTION
+    value: 'elinaf-connexion' 
+  - name: DOCKER_BASE
+    value: 'elinaf.jfrog.io/jordanta-docker-local'
+  - name: DOCKER_IMAGE_NAME
+    value: '$(DOCKER_BASE)/my-multi-arch-image:$(Build.BuildId)'
+  - name: ARTIFACTORY_REPO
+    value: 'jordanta-docker-local'
+  - name: DOCKER_USERNAME_ENV
+    value: 'jordanta'
+  - name: DOCKER_PASSWORD_ENV
+    value: 'Lagrenouille123!'
+  - name: JFROG_RUN_NATIVE
+    value: 'true'
+  - name: JFROG_CLI_LOG_LEVEL
+    value: 'DEBUG'
+
+steps:
+  # 1. Setup Docker Buildx
+  - script: |
+      docker buildx create --use
+    displayName: 'Setup Docker Buildx'
+  # 2. Authenticate to Artifactory Docker registry
+  - script: |
+      docker login $(DOCKER_BASE) -u "$DOCKER_USERNAME_ENV" --password "$DOCKER_PASSWORD_ENV"
+    displayName: 'Docker Login to Artifactory'
+    env:
+      DOCKER_USERNAME_ENV: $(DOCKER_USERNAME)
+      DOCKER_PASSWORD_ENV: $(DOCKER_PASSWORD)
+  # 3. Build, push, collect build-info, and publish — no docker pull
+  - task: JfrogCliV2@1
+    displayName: 'Build multi-arch image & publish build-info (Native Mode)'
+    env:
+      JFROG_RUN_NATIVE: 'true'
+      JFROG_CLI_LOG_LEVEL: 'DEBUG'
+    inputs:
+      jfrogPlatformConnection: '$(JFROG_CONNECTION)'
+      command: 'jf docker buildx build --platform linux/amd64,linux/arm64 --tag $(DOCKER_IMAGE_NAME) --file $(Build.SourcesDirectory)/Dockerfile --push --build-name=mytestjfbuild --build-number=1 $(Build.SourcesDirectory)'
+  - task: JfrogCliV2@1
+    displayName: 'Publish build-info'
+    env:
+      JFROG_RUN_NATIVE: 'true'
+    inputs:
+      jfrogPlatformConnection: '$(JFROG_CONNECTION)'
+      command: 'jf rt build-publish mytestjfbuild 1'
